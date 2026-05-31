@@ -13,7 +13,12 @@ type SignalFilter = 'all' | 'strong_buy' | 'watch';
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 const MARKET_LABELS: Record<MarketFilter, string> = { all: '전체', kr: '국내', us: '미국' };
-const SIGNAL_LABELS: Record<SignalFilter, string> = { all: '전체', strong_buy: '70+ 강한 매수', watch: '50+ 관망 포함' };
+// 필터는 완전히 분리 — 겹치지 않음
+const SIGNAL_LABELS: Record<SignalFilter, string> = {
+  all: '전체',
+  strong_buy: '🟢 강한 매수 (65+)',
+  watch: '🟡 관망/분할매수 (48~64)',
+};
 
 export default function Home() {
   const [market, setMarket] = useState<MarketFilter>('all');

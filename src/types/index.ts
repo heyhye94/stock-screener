@@ -60,6 +60,7 @@ export interface StockResult {
     fundamental: FundamentalDetails;
     supply: SupplyDetails;
   };
+  news?: string | null;
   error?: string;
 }
 
