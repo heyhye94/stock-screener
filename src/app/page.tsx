@@ -76,10 +76,18 @@ export default function Home() {
 
         {/* Stats */}
         {data && (
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard label="분석 종목" value={data.stocks.length} color="text-slate-200" />
-            <StatCard label="강한 매수 (70+)" value={strongBuyCount} color="text-green-400" />
-            <StatCard label="관망 (50~69)" value={watchCount} color="text-yellow-400" />
+          <div className="space-y-2">
+            {data.scannedCount && (
+              <p className="text-xs text-slate-500">
+                🔍 총 <span className="text-slate-300 font-semibold">{data.scannedCount}개</span> 종목 스캔 →
+                점수 상위 <span className="text-slate-300 font-semibold">{data.stocks.length}개</span> 표시
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              <StatCard label="표시 종목" value={data.stocks.length} color="text-slate-200" />
+              <StatCard label="강한 매수 (65+)" value={strongBuyCount} color="text-green-400" />
+              <StatCard label="관망 (48~64)" value={watchCount} color="text-yellow-400" />
+            </div>
           </div>
         )}
 
@@ -119,9 +127,9 @@ export default function Home() {
 
         {/* Signal Legend */}
         <div className="card p-3 flex flex-wrap gap-4">
-          <LegendItem color="bg-green-500" label="70점↑ 강한 매수 신호" />
-          <LegendItem color="bg-yellow-500" label="50~69점 관망 / 분할매수" />
-          <LegendItem color="bg-red-500" label="50점↓ 신호 없음" />
+          <LegendItem color="bg-green-500" label="65점↑ 강한 매수 신호" />
+          <LegendItem color="bg-yellow-500" label="48~64점 관망 / 분할매수" />
+          <LegendItem color="bg-red-500" label="48점↓ 신호 없음" />
           <span className="text-xs text-slate-600 ml-auto self-center hidden sm:block">종목 클릭 시 상세 분석 펼쳐보기</span>
         </div>
 

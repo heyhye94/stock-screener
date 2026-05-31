@@ -74,4 +74,6 @@ export interface ScreenResponse {
   stocks: StockResult[];
   sentiment: SentimentData;
   updatedAt: string;
+  scannedCount?: number;
+  candidateCount?: number;
 }
