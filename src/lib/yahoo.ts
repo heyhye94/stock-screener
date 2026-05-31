@@ -1,8 +1,9 @@
 /**
  * Yahoo Finance 데이터 fetcher
  *
- * 2024년부터 Yahoo Finance가 서버(AWS) IP에서의 요청을 차단.
- * 해결책: fc.yahoo.com에서 쿠키 취득 → v1/test/getcrumb에서 크럼 취득 → 모든 API 요청에 포함
+ * Yahoo Finance가 서버(AWS/Vercel) IP에서의 요청을 차단/제한.
+ * 해결책: fc.yahoo.com에서 A3 쿠키 취득 → v8/chart는 쿠키만으로 동작
+ *         v10/quoteSummary는 crumb 필요 (rate-limit 시 부분 데이터 반환)
  */
 
 const YAHOO_UA =
@@ -15,6 +16,8 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string }> {
   const now = Date.now();
   if (_auth && now - _auth.ts < 45 * 60 * 1000) return _auth;   // 45분 캐시
 
+  let cookie = '';
+
   try {
     // Step 1: fc.yahoo.com에서 A3 세션 쿠키 취득
     const r1 = await fetch('https://fc.yahoo.com', {
@@ -23,12 +26,16 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string }> {
       cache: 'no-store',
     });
 
-    // Set-Cookie 헤더 추출 (Node.js 18에서는 첫 번째 값만 반환)
+    // Set-Cookie 헤더 추출 — "A3=...; Expires=..." → "A3=..."
     const rawCookie = r1.headers.get('set-cookie') ?? '';
-    // "A3=...; Expires=..." → "A3=..."
-    const cookie = rawCookie.split(';')[0].trim();
+    cookie = rawCookie.split(';')[0].trim();
+  } catch {
+    // 쿠키 취득 실패 시 빈 문자열 유지
+  }
 
-    // Step 2: 쿠키로 크럼 취득
+  let crumb = '';
+  try {
+    // Step 2: 쿠키로 크럼 취득 (Vercel IP에서 429 rate-limit 가능)
     const r2 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
       headers: {
         'User-Agent': YAHOO_UA,
@@ -38,24 +45,17 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string }> {
       cache: 'no-store',
     });
 
-    const crumb = r2.ok ? (await r2.text()).trim() : '';
-
-    if (crumb.length >= 4 && !crumb.startsWith('<')) {
-      _auth = { cookie, crumb, ts: now };
-      return _auth;
+    const text = r2.ok ? (await r2.text()).trim() : '';
+    if (text.length >= 4 && !text.startsWith('<') && !text.includes('Request')) {
+      crumb = text;
     }
-
-    // 쿠키 없이 크럼만 시도 (일부 환경에서 동작)
-    const r3 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
-      headers: { 'User-Agent': YAHOO_UA },
-      cache: 'no-store',
-    });
-    const crumb2 = r3.ok ? (await r3.text()).trim() : '';
-    _auth = { cookie: '', crumb: crumb2, ts: now };
-    return _auth;
   } catch {
-    return { cookie: '', crumb: '' };
+    // crumb 취득 실패 — cookie만으로 v8/chart는 정상 동작
   }
+
+  // ★ 쿠키는 crumb 성공 여부와 무관하게 항상 저장
+  _auth = { cookie, crumb, ts: Date.now() };
+  return _auth;
 }
 
 function makeHeaders(cookie: string): Record<string, string> {
@@ -93,7 +93,7 @@ export interface YahooFundamentals {
   changePercent: number;
 }
 
-// ── OHLCV (기술적 지표용) ─────────────────────────────────────────────────
+// ── OHLCV (기술적 지표용) — 쿠키만으로도 동작 확인됨 ─────────────────────
 export async function fetchOHLCV(ticker: string): Promise<OHLCVData | null> {
   try {
     const { cookie, crumb } = await getYahooAuth();
@@ -102,7 +102,7 @@ export async function fetchOHLCV(ticker: string): Promise<OHLCVData | null> {
 
     const res = await fetch(url, {
       headers: makeHeaders(cookie),
-      next: { revalidate: 300 },
+      cache: 'no-store',
     });
     if (!res.ok) return null;
 
@@ -141,18 +141,18 @@ export async function fetchOHLCV(ticker: string): Promise<OHLCVData | null> {
   }
 }
 
-// ── 기본적 분석 (v10/quoteSummary — crumb 필수) ───────────────────────────
+// ── 기본적 분석 (v10/quoteSummary — crumb 있으면 포함, 없으면 쿠키만 시도) ─
 export async function fetchFundamentals(ticker: string): Promise<YahooFundamentals | null> {
   try {
     const { cookie, crumb } = await getYahooAuth();
-    if (!crumb) return null;
 
     const modules = 'defaultKeyStatistics,financialData,summaryDetail,price';
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+    const crumbQ = crumb ? `&crumb=${encodeURIComponent(crumb)}` : '';
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}${crumbQ}`;
 
     const res = await fetch(url, {
       headers: makeHeaders(cookie),
-      next: { revalidate: 1800 },
+      cache: 'no-store',
     });
     if (!res.ok) return null;
 
@@ -189,7 +189,7 @@ export async function fetchNewsHeadline(ticker: string): Promise<string | null> 
 
     const res = await fetch(url, {
       headers: makeHeaders(cookie),
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     });
     if (!res.ok) return null;
 
